@@ -1,0 +1,17 @@
+services:
+  samba:
+    build:
+      context: .
+    image: samba-container:test
+    ports:
+      - "445:445"
+    environment:
+      SHARE1: data;/shares;yes;no;yes
+    volumes:
+      - samba-data:/shares
+      - samba-state:/var/lib/samba
+    restart: unless-stopped
+
+volumes:
+  samba-data:
+  samba-state:
