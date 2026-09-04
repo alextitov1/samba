@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          # DL3006/DL3041: base images and dnf packages are intentionally
+          # left unpinned to exact tag/version here — pins live in the ARG
+          # defaults and Dependabot digest bumps instead.
+          # DL3003/DL4006: the verify-then-build RUN step is intentionally
+          # a single layer.
+          ignore: DL3006,DL3041,DL3003,DL4006
+
+      - name: Lint shell scripts
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: "."
+
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Prepare platform tag
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build test image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          tags: samba-container:test
+          cache-from: type=gha,scope=ci-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=ci-${{ env.PLATFORM_PAIR }}
+          outputs: type=docker
+
+      - name: Run integration tests
+        run: IMAGE=samba-container:test ./tests/integration.sh

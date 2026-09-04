@@ -3,6 +3,9 @@ set -eu
 
 SHARES_CONFIG_FILE="${SAMBA_SHARES_CONFIG_FILE:-/run/samba/shares.conf}"
 VETO_FILES='/.apdisk/.DS_Store/.TemporaryItems/.Trashes/desktop.ini/ehthumbs.db/Network Trash Folder/Temporary Items/Thumbs.db/'
+NEWLINE='
+'
+CARRIAGE_RETURN=$(printf '\r')
 
 die() {
     echo "entrypoint: $*" >&2
@@ -17,9 +20,7 @@ validate_account_name() {
 
 validate_text() {
     case "$2" in
-        *"
-"*|*"
-"*) die "$1 must not contain newline characters" ;;
+        *"${NEWLINE}"*|*"${CARRIAGE_RETURN}"*) die "$1 must not contain newline characters" ;;
     esac
 }
 
