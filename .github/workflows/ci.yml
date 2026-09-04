@@ -18,6 +18,12 @@ jobs:
         uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
+          # DL3006/DL3041: base images and dnf packages are intentionally
+          # left unpinned to exact tag/version here — pins live in the ARG
+          # defaults and Dependabot digest bumps instead.
+          # DL3003/DL4006: the verify-then-build RUN step is intentionally
+          # a single layer.
+          ignore: DL3006,DL3041,DL3003,DL4006
 
       - name: Lint shell scripts
         uses: ludeeus/action-shellcheck@2.0.0
