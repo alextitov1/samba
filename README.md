@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/samba-logo.svg" alt="Samba logo" width="80">
+</p>
+
 # Samba Container
 
 Share files over your network (Windows, Mac, Linux) using Docker.
