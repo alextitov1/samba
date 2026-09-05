@@ -3,6 +3,9 @@ name: Publish container image
 on:
   push:
     tags: ["v*"]
+  # Dispatched by the Samba update workflow after it pushes a tag: a tag
+  # pushed with GITHUB_TOKEN does not itself trigger workflows.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,6 +29,13 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
+      - name: Require a version tag
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "::error::this workflow must run on a v* tag, got $GITHUB_REF"; exit 1 ;;
+          esac
+
       - uses: actions/checkout@v7
 
       - name: Prepare platform tag
@@ -116,9 +126,12 @@ jobs:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
             ${{ env.DOCKERHUB_IMAGE }}
+          # The mutable series tag (v4.24.6-2 -> 4.24) uses `match` rather than
+          # `semver`: the build-revision suffix makes the git tag a semver
+          # prerelease, for which {{major}}.{{minor}} is never emitted.
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=match,pattern=v(\d+\.\d+),group=1
             type=raw,value=latest
 
       - name: Create manifest lists and push
