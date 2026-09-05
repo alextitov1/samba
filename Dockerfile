@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1.7
 ARG ALMALINUX_BUILD_IMAGE=almalinux:10-minimal@sha256:77aeeeef6889af731a91d83f65b08ef9930bde10332ae2e3fd6e0f0c47066a7b
-ARG ALMALINUX_RUNTIME_IMAGE=almalinux/10-micro:10@sha256:2d26d72e9711e1a90ac476f574f533ff9f668f19dcff292c137a65ef57fffc06
 
 FROM ${ALMALINUX_BUILD_IMAGE} AS builder
 
@@ -9,7 +8,7 @@ ARG SAMBA_SHA512=fb4e4602c0a36ab26ce04457e0ae259eda6f00411468f91227d234385b545e2
 WORKDIR /usr/src
 
 RUN microdnf install -y --enablerepo=crb --setopt=install_weak_deps=0 \
-        bison ca-certificates curl-minimal diffutils findutils flex gcc gcc-c++ gnutls-devel \
+        binutils bison ca-certificates curl-minimal diffutils findutils flex gcc gcc-c++ gnutls-devel \
     gnupg2 gzip libacl-devel libarchive-devel libattr-devel libcap-devel libtirpc-devel lmdb-devel \
         make perl perl-Parse-Yapp pkgconf-pkg-config popt-devel python3 rpcgen \
         tar which zlib-ng-compat-devel \
@@ -53,6 +52,9 @@ RUN curl --fail --location --proto '=https' --tlsv1.2 \
     && make -j"$(getconf _NPROCESSORS_ONLN)" \
     && make install \
     && install -D -m 0644 COPYING /opt/samba/share/licenses/samba/COPYING \
+    && rm -rf /opt/samba/include /opt/samba/lib/pkgconfig \
+    && find /opt/samba -type f \( -name '*.so*' -o -perm -u+x \) \
+        -exec sh -c 'strip --strip-unneeded "$@" 2>/dev/null || true' _ {} + \
     && /opt/samba/sbin/smbd --version
 
 FROM ${ALMALINUX_BUILD_IMAGE} AS runtime-packages
@@ -62,11 +64,23 @@ RUN mkdir -p /runtime-root \
         --config=/etc/dnf/dnf.conf --noplugins \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
         --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
-        ca-certificates gawk glibc-gconv-extra glibc-langpack-en gnutls libacl libarchive \
+        ca-certificates coreutils-single gawk gnutls libacl libarchive \
         libattr libcap libtirpc passwd popt sed shadow-utils zlib-ng-compat \
-    && rm -rf /runtime-root/var/cache/dnf /runtime-root/var/log/*
+    && microdnf install -y --installroot=/gconv-extra --releasever=10 \
+        --config=/etc/dnf/dnf.conf --noplugins \
+        --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
+        --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
+        glibc-gconv-extra \
+    && install -d -m 0755 /runtime-root/usr/lib64/gconv/gconv-modules.d \
+    && install -m 0755 /gconv-extra/usr/lib64/gconv/IBM850.so \
+        /runtime-root/usr/lib64/gconv/IBM850.so \
+    && install -m 0644 /gconv-extra/usr/lib64/gconv/gconv-modules.d/gconv-modules-extra.conf \
+        /runtime-root/usr/lib64/gconv/gconv-modules.d/gconv-modules-extra.conf \
+    && rm -f /runtime-root/usr/lib64/gconv/gconv-modules.cache \
+    && rm -rf /gconv-extra /runtime-root/var/cache/dnf /runtime-root/var/lib/dnf \
+        /runtime-root/var/log/*
 
-FROM ${ALMALINUX_RUNTIME_IMAGE} AS runtime
+FROM scratch AS runtime
 
 ARG SAMBA_VERSION=4.24.6
 ARG BUILD_DATE
@@ -78,7 +92,6 @@ LABEL org.opencontainers.image.title="AlmaLinux Samba" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.licenses="GPL-3.0-or-later" \
-    org.opencontainers.image.base.name="docker.io/almalinux/10-micro:10" \
       org.opencontainers.image.samba.source="https://download.samba.org/pub/samba/stable/samba-${SAMBA_VERSION}.tar.gz"
 
 COPY --from=runtime-packages /runtime-root/ /
