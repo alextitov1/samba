@@ -11,6 +11,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  DOCKERHUB_IMAGE: 4esnok/samba
 
 jobs:
   build:
@@ -42,6 +43,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Generate image metadata
         id: meta
         uses: docker/metadata-action@v6
@@ -58,7 +65,7 @@ jobs:
           annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=gha,scope=release-${{ env.PLATFORM_PAIR }}
           cache-to: type=gha,mode=max,scope=release-${{ env.PLATFORM_PAIR }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,"name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},${{ env.DOCKERHUB_IMAGE }}",push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -96,33 +103,45 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Generate image metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.DOCKERHUB_IMAGE }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      - name: Create manifest list and push
+      - name: Create manifest lists and push
         working-directory: ${{ runner.temp }}/digests
         run: |
-          tag_args=()
-          while IFS= read -r tag; do
-            tag_args+=(-t "$tag")
-          done < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          for image_ref in "$REGISTRY_REF" "$DOCKERHUB_REF"; do
+            tag_args=()
+            while IFS= read -r tag; do
+              tag_args+=(-t "$tag")
+            done < <(jq -r --arg ref "$image_ref" '.tags[] | select(startswith($ref + ":"))' <<< "$DOCKER_METADATA_OUTPUT_JSON")
 
-          digest_args=()
-          for sha in *; do
-            digest_args+=("${IMAGE_REF}@sha256:${sha}")
+            digest_args=()
+            for sha in *; do
+              digest_args+=("${image_ref}@sha256:${sha}")
+            done
+
+            docker buildx imagetools create "${tag_args[@]}" "${digest_args[@]}"
           done
-
-          docker buildx imagetools create "${tag_args[@]}" "${digest_args[@]}"
         env:
-          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          REGISTRY_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DOCKERHUB_REF: ${{ env.DOCKERHUB_IMAGE }}
 
-      - name: Inspect published image
+      - name: Inspect published images
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+          docker buildx imagetools inspect ${{ env.DOCKERHUB_IMAGE }}:${{ steps.meta.outputs.version }}
