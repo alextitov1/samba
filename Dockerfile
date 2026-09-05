@@ -9,7 +9,7 @@ WORKDIR /usr/src
 
 RUN microdnf install -y --enablerepo=crb --setopt=install_weak_deps=0 \
         binutils bison ca-certificates curl-minimal diffutils findutils flex gcc gcc-c++ gnutls-devel \
-    gnupg2 gzip libacl-devel libattr-devel libcap-devel libtirpc-devel lmdb-devel \
+    gnupg2 gzip libattr-devel libcap-devel libtirpc-devel lmdb-devel \
         make perl perl-Parse-Yapp pkgconf-pkg-config popt-devel python3 rpcgen \
         tar which zlib-devel \
     && microdnf clean all
@@ -68,7 +68,9 @@ RUN curl --fail --location --proto '=https' --tlsv1.2 \
         --disable-cephfs \
         --disable-spotlight \
         --disable-wsp \
-        --with-shared-modules='!DEFAULT,vfs_catia,vfs_fruit,vfs_streams_xattr,vfs_acl_xattr' \
+        --without-iconv \
+        --without-acl-support \
+        --with-shared-modules='!DEFAULT,vfs_catia,vfs_fruit,vfs_streams_xattr' \
     && make -j"$(getconf _NPROCESSORS_ONLN)" \
     && make install \
     && install -D -m 0644 COPYING /opt/samba/share/licenses/samba/COPYING \
@@ -84,20 +86,9 @@ RUN mkdir -p /runtime-root \
         --config=/etc/dnf/dnf.conf --noplugins \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
         --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
-        coreutils-single gawk gnutls grep libacl libattr libcap popt sed \
+        coreutils-single gawk gnutls grep libattr libcap popt sed \
         shadow-utils zlib \
-    && microdnf install -y --installroot=/gconv-extra --releasever=9 \
-        --config=/etc/dnf/dnf.conf --noplugins \
-        --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
-        --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
-        glibc-gconv-extra \
-    && install -d -m 0755 /runtime-root/usr/lib64/gconv/gconv-modules.d \
-    && install -m 0755 /gconv-extra/usr/lib64/gconv/IBM850.so \
-        /runtime-root/usr/lib64/gconv/IBM850.so \
-    && install -m 0644 /gconv-extra/usr/lib64/gconv/gconv-modules.d/gconv-modules-extra.conf \
-        /runtime-root/usr/lib64/gconv/gconv-modules.d/gconv-modules-extra.conf \
-    && rm -f /runtime-root/usr/lib64/gconv/gconv-modules.cache \
-    && rm -rf /gconv-extra /runtime-root/var/cache/dnf /runtime-root/var/lib/dnf \
+    && rm -rf /runtime-root/var/cache/dnf /runtime-root/var/lib/dnf \
         /runtime-root/var/log/*
 
 FROM scratch AS runtime
