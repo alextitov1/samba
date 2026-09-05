@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/samba-logo.svg" alt="Samba logo" width="80">
+  <img src="assets/samba-logo.svg" alt="Samba logo" width="180">
 </p>
 
 # Samba Container
