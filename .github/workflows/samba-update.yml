@@ -1,0 +1,183 @@
+name: Samba update
+
+on:
+  schedule:
+    # daily, 05:17 UTC
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Samba version to pin (default: newest stable release)"
+        required: false
+        type: string
+  push:
+    branches: ["main"]
+    paths:
+      - "Dockerfile"
+
+permissions:
+  contents: read
+
+env:
+  SAMBA_STABLE_URL: https://download.samba.org/pub/samba/stable
+  SAMBA_PUBKEY_URL: https://download.samba.org/pub/samba/samba-pubkey.asc
+
+jobs:
+  # Watch upstream for a newer stable release, verify the tarball's signature,
+  # and open a PR pinning the new version + checksum. CI on that PR does the
+  # real proof of work: it builds the image from the new source.
+  check:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Resolve current and upstream versions
+        id: versions
+        run: |
+          current="$(sed -n 's/^ARG SAMBA_VERSION=//p' Dockerfile | head -n1)"
+          if [ -z "$current" ]; then
+            echo "::error::could not read ARG SAMBA_VERSION from Dockerfile"
+            exit 1
+          fi
+
+          if [ -n "$REQUESTED" ]; then
+            latest="$REQUESTED"
+          else
+            latest="$(curl --fail --silent --show-error --location \
+                --proto '=https' --tlsv1.2 "${SAMBA_STABLE_URL}/" \
+              | grep -oE 'samba-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' \
+              | sed -e 's/^samba-//' -e 's/\.tar\.gz$//' \
+              | sort -u -V \
+              | tail -n1)"
+          fi
+          if [ -z "$latest" ]; then
+            echo "::error::could not determine the newest Samba release"
+            exit 1
+          fi
+
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          if [ "$current" = "$latest" ]; then
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+            echo "Samba $current is current."
+          elif [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n1)" = "$latest" ]; then
+            echo "outdated=true" >> "$GITHUB_OUTPUT"
+            echo "Samba $current -> $latest"
+          else
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::pinned Samba $current is newer than upstream $latest; leaving it alone"
+          fi
+        env:
+          REQUESTED: ${{ inputs.version }}
+
+      - name: Verify signature and checksum the new tarball
+        if: steps.versions.outputs.outdated == 'true'
+        id: verify
+        working-directory: ${{ runner.temp }}
+        run: |
+          # Same trust chain the Dockerfile uses: the detached signature covers
+          # the uncompressed tar, and the sha512 we pin is only computed from a
+          # tarball that passed that check.
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output samba.tar.gz "${SAMBA_STABLE_URL}/samba-${VERSION}.tar.gz"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output samba.tar.asc "${SAMBA_STABLE_URL}/samba-${VERSION}.tar.asc"
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output samba-pubkey.asc "${SAMBA_PUBKEY_URL}"
+
+          sha512="$(sha512sum samba.tar.gz | cut -d' ' -f1)"
+
+          GNUPGHOME="$(mktemp -d)"
+          export GNUPGHOME
+          gpg --batch --import samba-pubkey.asc
+          gunzip --keep samba.tar.gz
+          gpg --batch --verify samba.tar.asc samba.tar
+
+          echo "sha512=$sha512" >> "$GITHUB_OUTPUT"
+        env:
+          VERSION: ${{ steps.versions.outputs.latest }}
+
+      - name: Pin the new version
+        if: steps.versions.outputs.outdated == 'true'
+        run: |
+          sed -i \
+            -e "s/^ARG SAMBA_VERSION=.*/ARG SAMBA_VERSION=${VERSION}/" \
+            -e "s/^ARG SAMBA_SHA512=.*/ARG SAMBA_SHA512=${SHA512}/" \
+            Dockerfile
+          git --no-pager diff -- Dockerfile
+        env:
+          VERSION: ${{ steps.versions.outputs.latest }}
+          SHA512: ${{ steps.verify.outputs.sha512 }}
+
+      - name: Open pull request
+        if: steps.versions.outputs.outdated == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          # A PR created with GITHUB_TOKEN does not trigger CI. Set the
+          # AUTOMATION_TOKEN secret (a PAT with repo scope) to get build and
+          # integration tests to run on these PRs automatically; without it,
+          # close and reopen the PR to kick them off.
+          token: ${{ secrets.AUTOMATION_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: samba-update/${{ steps.versions.outputs.latest }}
+          delete-branch: true
+          commit-message: "build: update Samba to ${{ steps.versions.outputs.latest }}"
+          title: "build: update Samba to ${{ steps.versions.outputs.latest }}"
+          labels: |
+            dependencies
+            container
+          body: |
+            Upstream released Samba `${{ steps.versions.outputs.latest }}`
+            (pinned: `${{ steps.versions.outputs.current }}`).
+
+            The tarball's detached signature was verified against
+            [samba-pubkey.asc](${{ env.SAMBA_PUBKEY_URL }}) before the new
+            `SAMBA_SHA512` below was computed from it.
+
+            - Source: ${{ env.SAMBA_STABLE_URL }}/samba-${{ steps.versions.outputs.latest }}.tar.gz
+            - Release notes: https://www.samba.org/samba/history/samba-${{ steps.versions.outputs.latest }}.html
+            - `SAMBA_SHA512`: `${{ steps.verify.outputs.sha512 }}`
+
+            Merging this to `main` tags `v${{ steps.versions.outputs.latest }}-1`
+            and publishes the image.
+
+  # Once a version bump lands on main, cut the release tag for it.
+  tag:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Tag and release the new version
+        run: |
+          version="$(sed -n 's/^ARG SAMBA_VERSION=//p' Dockerfile | head -n1)"
+          if [ -z "$version" ]; then
+            echo "::error::could not read ARG SAMBA_VERSION from Dockerfile"
+            exit 1
+          fi
+
+          if [ -n "$(git tag --list "v${version}" "v${version}-*")" ]; then
+            echo "Samba $version is already released; nothing to tag."
+            exit 0
+          fi
+
+          tag="v${version}-1"
+          git tag "$tag"
+          git push origin "$tag"
+
+          # A tag pushed with GITHUB_TOKEN does not trigger `on: push: tags`,
+          # so start the release run explicitly against the new tag.
+          gh workflow run release.yml --ref "$tag"
+          echo "Released $tag" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
