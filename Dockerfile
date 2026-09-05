@@ -65,7 +65,7 @@ RUN mkdir -p /runtime-root \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
         --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
         ca-certificates coreutils-single gawk gnutls libacl libarchive \
-        libattr libcap libtirpc passwd popt sed shadow-utils zlib \
+        libattr libcap libtirpc popt sed shadow-utils zlib \
     && microdnf install -y --installroot=/gconv-extra --releasever=9 \
         --config=/etc/dnf/dnf.conf --noplugins \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
