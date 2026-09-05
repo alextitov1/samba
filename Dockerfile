@@ -9,7 +9,7 @@ WORKDIR /usr/src
 
 RUN microdnf install -y --enablerepo=crb --setopt=install_weak_deps=0 \
         binutils bison ca-certificates curl-minimal diffutils findutils flex gcc gcc-c++ gnutls-devel \
-    gnupg2 gzip libacl-devel libarchive-devel libattr-devel libcap-devel libtirpc-devel lmdb-devel \
+    gnupg2 gzip libacl-devel libattr-devel libcap-devel libtirpc-devel lmdb-devel \
         make perl perl-Parse-Yapp pkgconf-pkg-config popt-devel python3 rpcgen \
         tar which zlib-devel \
     && microdnf clean all
@@ -48,6 +48,26 @@ RUN curl --fail --location --proto '=https' --tlsv1.2 \
         --without-systemd \
         --without-ldap \
         --without-json \
+        --without-winbind \
+        --without-libarchive \
+        --without-quotas \
+        --without-utmp \
+        --without-syslog \
+        --without-automount \
+        --without-regedit \
+        --without-winexe \
+        --without-fake-kaserver \
+        --without-dmapi \
+        --without-fam \
+        --without-smb1-server \
+        --without-systemd-userdb \
+        --without-libunwind \
+        --without-lttng \
+        --disable-avahi \
+        --disable-glusterfs \
+        --disable-cephfs \
+        --disable-spotlight \
+        --disable-wsp \
         --with-shared-modules='!DEFAULT,vfs_catia,vfs_fruit,vfs_streams_xattr,vfs_acl_xattr' \
     && make -j"$(getconf _NPROCESSORS_ONLN)" \
     && make install \
@@ -64,8 +84,8 @@ RUN mkdir -p /runtime-root \
         --config=/etc/dnf/dnf.conf --noplugins \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
         --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
-        ca-certificates coreutils-single gawk gnutls libacl libarchive \
-        libattr libcap libtirpc popt sed shadow-utils zlib \
+        coreutils-single gawk gnutls grep libacl libattr libcap popt sed \
+        shadow-utils zlib \
     && microdnf install -y --installroot=/gconv-extra --releasever=9 \
         --config=/etc/dnf/dnf.conf --noplugins \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
