@@ -1,0 +1,48 @@
+name: Docker Hub description
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "README.md"
+      - ".github/workflows/dockerhub-description.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOCKERHUB_IMAGE: 4esnok/samba
+
+jobs:
+  description:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate Docker Hub short description
+        shell: bash
+        env:
+          SHORT_DESC: ${{ github.event.repository.description }}
+        run: |
+          if [ -z "$SHORT_DESC" ]; then
+            echo "Repository description is empty; cannot sync Docker Hub short description."
+            exit 1
+          fi
+          if [ ${#SHORT_DESC} -gt 100 ]; then
+            echo "Repository description is ${#SHORT_DESC} characters; Docker Hub short description limit is 100."
+            exit 1
+          fi
+
+      - name: Sync README to Docker Hub
+        uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_IMAGE }}
+          # Sourced from the GitHub repository description, so the two stay in
+          # sync. Keep it under 100 characters — Docker Hub's limit for the
+          # short description is shorter than GitHub's.
+          short-description: ${{ github.event.repository.description }}
+          readme-filepath: ./README.md
