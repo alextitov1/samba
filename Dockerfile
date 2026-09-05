@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG ALMALINUX_BUILD_IMAGE=almalinux:10-minimal@sha256:77aeeeef6889af731a91d83f65b08ef9930bde10332ae2e3fd6e0f0c47066a7b
+ARG ALMALINUX_BUILD_IMAGE=almalinux:9-minimal@sha256:e03fe7d942a94ad7a72b9fe5eb6af54388b05bc8357151c891f13c023817df98
 
 FROM ${ALMALINUX_BUILD_IMAGE} AS builder
 
@@ -11,7 +11,7 @@ RUN microdnf install -y --enablerepo=crb --setopt=install_weak_deps=0 \
         binutils bison ca-certificates curl-minimal diffutils findutils flex gcc gcc-c++ gnutls-devel \
     gnupg2 gzip libacl-devel libarchive-devel libattr-devel libcap-devel libtirpc-devel lmdb-devel \
         make perl perl-Parse-Yapp pkgconf-pkg-config popt-devel python3 rpcgen \
-        tar which zlib-ng-compat-devel \
+        tar which zlib-devel \
     && microdnf clean all
 
 RUN curl --fail --location --proto '=https' --tlsv1.2 \
@@ -60,13 +60,13 @@ RUN curl --fail --location --proto '=https' --tlsv1.2 \
 FROM ${ALMALINUX_BUILD_IMAGE} AS runtime-packages
 
 RUN mkdir -p /runtime-root \
-    && microdnf install -y --installroot=/runtime-root --releasever=10 \
+    && microdnf install -y --installroot=/runtime-root --releasever=9 \
         --config=/etc/dnf/dnf.conf --noplugins \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
         --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
         ca-certificates coreutils-single gawk gnutls libacl libarchive \
-        libattr libcap libtirpc passwd popt sed shadow-utils zlib-ng-compat \
-    && microdnf install -y --installroot=/gconv-extra --releasever=10 \
+        libattr libcap libtirpc passwd popt sed shadow-utils zlib \
+    && microdnf install -y --installroot=/gconv-extra --releasever=9 \
         --config=/etc/dnf/dnf.conf --noplugins \
         --setopt=cachedir=/var/cache/dnf --setopt=reposdir=/etc/yum.repos.d \
         --setopt=varsdir=/etc/dnf/vars --setopt=install_weak_deps=0 --nodocs \
