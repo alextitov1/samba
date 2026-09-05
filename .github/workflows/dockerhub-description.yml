@@ -21,6 +21,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Validate Docker Hub short description
+        shell: bash
+        env:
+          SHORT_DESC: ${{ github.event.repository.description }}
+        run: |
+          if [ -z "$SHORT_DESC" ]; then
+            echo "Repository description is empty; cannot sync Docker Hub short description."
+            exit 1
+          fi
+          if [ ${#SHORT_DESC} -gt 100 ]; then
+            echo "Repository description is ${#SHORT_DESC} characters; Docker Hub short description limit is 100."
+            exit 1
+          fi
+
       - name: Sync README to Docker Hub
         uses: peter-evans/dockerhub-description@v5
         with:
