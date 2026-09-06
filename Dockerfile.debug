@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1.7
+#
+# Fast-iteration image for working on the entrypoint and share-loading
+# scripts. Samba comes from the AlmaLinux repositories instead of being
+# compiled from source, so a rebuild takes seconds rather than minutes.
+#
+# This is a development tool, not a release artifact: the Samba version
+# tracks whatever AlmaLinux ships (4.23.x) rather than the pinned upstream
+# release the production image builds (4.24.6), and the image carries a
+# shell and debugging tools the production image deliberately omits.
+#
+#   docker build -f Dockerfile.debug -t 4esnok/samba:debug .
+#   docker run --rm -it --entrypoint bash 4esnok/samba:debug
+#
+ARG ALMALINUX_BUILD_IMAGE=almalinux:9-minimal@sha256:e03fe7d942a94ad7a72b9fe5eb6af54388b05bc8357151c891f13c023817df98
+
+FROM ${ALMALINUX_BUILD_IMAGE} AS debug
+
+ARG BUILD_DATE
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="AlmaLinux Samba (debug)" \
+      org.opencontainers.image.description="Development image: Samba from AlmaLinux repositories, with a shell and debugging tools" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
+
+# samba              -> smbd, nmbd, vfs modules
+# samba-common-tools -> testparm, smbpasswd
+# samba-client       -> smbclient, used by the healthcheck
+# shadow-utils       -> useradd, groupadd, used by the entrypoint
+# gawk/sed/grep      -> used by load-env and the integration tests
+# the rest are here purely to make `docker exec` useful
+RUN microdnf install -y --setopt=install_weak_deps=0 --nodocs \
+        samba samba-client samba-common samba-common-tools \
+        shadow-utils gawk sed grep findutils diffutils \
+        bash less procps-ng iproute iputils util-linux \
+    && microdnf clean all \
+    && rm -rf /var/cache/dnf /var/log/*
+
+RUN install -d -m 0755 /etc/samba /run/samba /usr/local/libexec/samba \
+        /var/cache/samba /var/lib/samba/private \
+    && install -m 0644 /dev/null /run/samba/shares.conf \
+    && install -d -m 0755 /shares
+
+COPY config/smb.conf /etc/samba/smb.conf
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint
+COPY scripts/load-env.sh /usr/local/libexec/samba/load-env
+
+RUN chmod 0755 /usr/local/bin/entrypoint /usr/local/libexec/samba/load-env
+
+ENV SAMBA_UID=1000 \
+    SAMBA_GID=1000
+
+EXPOSE 445/tcp
+VOLUME ["/shares", "/var/lib/samba"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD smbclient -L //127.0.0.1 -N -m SMB3 >/dev/null 2>&1 || exit 1
+
+ENTRYPOINT ["/usr/local/bin/entrypoint"]

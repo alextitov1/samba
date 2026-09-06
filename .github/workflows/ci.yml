@@ -25,6 +25,12 @@ jobs:
           # a single layer.
           ignore: DL3006,DL3041,DL3003,DL4006
 
+      - name: Lint debug Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile.debug
+          ignore: DL3006,DL3041,DL3003,DL4006
+
       - name: Lint shell scripts
         uses: ludeeus/action-shellcheck@2.0.0
         with:
