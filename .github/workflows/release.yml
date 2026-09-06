@@ -158,3 +158,126 @@ jobs:
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
           docker buildx imagetools inspect ${{ env.DOCKERHUB_IMAGE }}:${{ steps.meta.outputs.version }}
+
+  # The debug image ships alongside each release as a mutable :debug tag.
+  # It is built from Dockerfile.debug (Samba from the AlmaLinux repos, plus a
+  # shell and debugging tools) and is a development aid, not a release
+  # artifact. These jobs are independent of `build`/`publish`, so a failure
+  # here can never block the production release.
+  build-debug:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: Require a version tag
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) ;;
+            *) echo "::error::this workflow must run on a v* tag, got $GITHUB_REF"; exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v7
+
+      - name: Prepare platform tag
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+        env:
+          PLATFORM: ${{ matrix.platform }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push debug image by digest
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.debug
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+            VCS_REF=${{ github.sha }}
+          cache-from: type=gha,scope=release-debug-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=release-debug-${{ env.PLATFORM_PAIR }}
+          outputs: type=image,"name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},${{ env.DOCKERHUB_IMAGE }}",push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p "${{ runner.temp }}/digests"
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: debugdigests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish-debug:
+    needs: build-debug
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: debugdigests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create debug manifest lists and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          for image_ref in "$REGISTRY_REF" "$DOCKERHUB_REF"; do
+            digest_args=()
+            for sha in *; do
+              digest_args+=("${image_ref}@sha256:${sha}")
+            done
+
+            docker buildx imagetools create -t "${image_ref}:debug" "${digest_args[@]}"
+          done
+        env:
+          REGISTRY_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DOCKERHUB_REF: ${{ env.DOCKERHUB_IMAGE }}
+
+      - name: Inspect published debug images
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:debug
+          docker buildx imagetools inspect ${{ env.DOCKERHUB_IMAGE }}:debug
