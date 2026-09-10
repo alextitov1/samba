@@ -116,7 +116,7 @@ jobs:
 
       - name: Open pull request
         if: steps.versions.outputs.outdated == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           # A PR created with GITHUB_TOKEN does not trigger CI. Set the
           # AUTOMATION_TOKEN secret (a PAT with repo scope) to get build and
