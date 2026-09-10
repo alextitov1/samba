@@ -23,7 +23,9 @@ jobs:
           # defaults and Dependabot digest bumps instead.
           # DL3003/DL4006: the verify-then-build RUN step is intentionally
           # a single layer.
-          ignore: DL3006,DL3041,DL3003,DL4006
+          # DL3025: the HEALTHCHECK CMD needs shell form for the redirection
+          # and `|| exit 1`; hadolint 2.15+ flags it where older ones did not.
+          ignore: DL3006,DL3041,DL3003,DL4006,DL3025
 
       - name: Lint debug Dockerfile
         uses: hadolint/hadolint-action@v3.1.0
