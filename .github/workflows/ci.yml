@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Lint Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: Dockerfile
           # DL3006/DL3041: base images and dnf packages are intentionally
@@ -28,7 +28,7 @@ jobs:
           ignore: DL3006,DL3041,DL3003,DL4006,DL3025
 
       - name: Lint debug Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: Dockerfile.debug
           ignore: DL3006,DL3041,DL3003,DL4006
