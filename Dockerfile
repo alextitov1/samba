@@ -3,8 +3,8 @@ ARG ALMALINUX_BUILD_IMAGE=almalinux:9-minimal@sha256:e03fe7d942a94ad7a72b9fe5eb6
 
 FROM ${ALMALINUX_BUILD_IMAGE} AS builder
 
-ARG SAMBA_VERSION=4.24.7
-ARG SAMBA_SHA512=f895baf3c06d0d0371052ae48f44ebc9f953441a8d6fbb6eab223bf1b892dab7be429733d46fa2cbd1088b1cefee601cc99ca97f41b985c47b9846c300af8cce
+ARG SAMBA_VERSION=4.25.0
+ARG SAMBA_SHA512=cf22b631c1340e0d02c0fa092f7661072fef4fffddb048a4ed6b481edf7bf0df158b33a7330d1ed2e56e20a755e0991121b3123836e5dcf442cb55294e0ca61e
 WORKDIR /usr/src
 
 RUN microdnf install -y --enablerepo=crb --setopt=install_weak_deps=0 \
@@ -82,7 +82,7 @@ RUN mkdir -p /runtime-root \
 
 FROM scratch AS runtime
 
-ARG SAMBA_VERSION=4.24.7
+ARG SAMBA_VERSION=4.25.0
 ARG BUILD_DATE
 ARG VCS_REF
 
