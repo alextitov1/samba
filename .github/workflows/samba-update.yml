@@ -49,6 +49,7 @@ jobs:
             latest="$REQUESTED"
           else
             latest="$(curl --fail --silent --show-error --location \
+                --retry 5 --retry-delay 5 --retry-max-time 120 \
                 --proto '=https' --tlsv1.2 "${SAMBA_STABLE_URL}/" \
               | grep -oE 'samba-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' \
               | sed -e 's/^samba-//' -e 's/\.tar\.gz$//' \
@@ -83,11 +84,17 @@ jobs:
           # Same trust chain the Dockerfile uses: the detached signature covers
           # the uncompressed tar, and the sha512 we pin is only computed from a
           # tarball that passed that check.
-          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-delay 5 --retry-max-time 120 \
+            --proto '=https' --tlsv1.2 \
             --output samba.tar.gz "${SAMBA_STABLE_URL}/samba-${VERSION}.tar.gz"
-          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-delay 5 --retry-max-time 120 \
+            --proto '=https' --tlsv1.2 \
             --output samba.tar.asc "${SAMBA_STABLE_URL}/samba-${VERSION}.tar.asc"
-          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-delay 5 --retry-max-time 120 \
+            --proto '=https' --tlsv1.2 \
             --output samba-pubkey.asc "${SAMBA_PUBKEY_URL}"
 
           sha512="$(sha512sum samba.tar.gz | cut -d' ' -f1)"
