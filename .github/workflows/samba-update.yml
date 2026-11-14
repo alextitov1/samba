@@ -29,7 +29,7 @@ jobs:
   check:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     permissions:
       contents: write
       pull-requests: write
@@ -45,11 +45,15 @@ jobs:
             exit 1
           fi
 
+          # download.samba.org has spells of 504s and dropped connections that
+          # last minutes, so retry every error (not just curl's transient set)
+          # for up to 10 minutes; --max-time bounds each single attempt.
           if [ -n "$REQUESTED" ]; then
             latest="$REQUESTED"
           else
             latest="$(curl --fail --silent --show-error --location \
-                --retry 5 --retry-delay 5 --retry-max-time 120 \
+                --retry 20 --retry-delay 30 --retry-max-time 600 --retry-all-errors \
+                --connect-timeout 30 --max-time 180 \
                 --proto '=https' --tlsv1.2 "${SAMBA_STABLE_URL}/" \
               | grep -oE 'samba-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' \
               | sed -e 's/^samba-//' -e 's/\.tar\.gz$//' \
@@ -85,15 +89,18 @@ jobs:
           # the uncompressed tar, and the sha512 we pin is only computed from a
           # tarball that passed that check.
           curl --fail --silent --show-error --location \
-            --retry 5 --retry-delay 5 --retry-max-time 120 \
+            --retry 20 --retry-delay 30 --retry-max-time 600 --retry-all-errors \
+            --connect-timeout 30 --max-time 180 \
             --proto '=https' --tlsv1.2 \
             --output samba.tar.gz "${SAMBA_STABLE_URL}/samba-${VERSION}.tar.gz"
           curl --fail --silent --show-error --location \
-            --retry 5 --retry-delay 5 --retry-max-time 120 \
+            --retry 20 --retry-delay 30 --retry-max-time 600 --retry-all-errors \
+            --connect-timeout 30 --max-time 180 \
             --proto '=https' --tlsv1.2 \
             --output samba.tar.asc "${SAMBA_STABLE_URL}/samba-${VERSION}.tar.asc"
           curl --fail --silent --show-error --location \
-            --retry 5 --retry-delay 5 --retry-max-time 120 \
+            --retry 20 --retry-delay 30 --retry-max-time 600 --retry-all-errors \
+            --connect-timeout 30 --max-time 180 \
             --proto '=https' --tlsv1.2 \
             --output samba-pubkey.asc "${SAMBA_PUBKEY_URL}"
 
